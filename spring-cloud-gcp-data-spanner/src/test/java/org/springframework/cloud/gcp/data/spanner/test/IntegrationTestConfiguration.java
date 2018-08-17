@@ -26,6 +26,7 @@ import com.google.cloud.spanner.SpannerOptions;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cloud.gcp.core.Credentials;
+import org.springframework.cloud.gcp.core.CredentialsSupplier;
 import org.springframework.cloud.gcp.core.DefaultCredentialsProvider;
 import org.springframework.cloud.gcp.core.DefaultGcpProjectIdProvider;
 import org.springframework.cloud.gcp.data.spanner.core.SpannerMutationFactory;
@@ -40,6 +41,7 @@ import org.springframework.cloud.gcp.data.spanner.repository.config.EnableSpanne
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.PropertySource;
+import org.springframework.core.io.Resource;
 
 /**
  * @author Balint Pato
@@ -56,6 +58,27 @@ public class IntegrationTestConfiguration {
 	@Value("${test.integration.spanner.instance}")
 	private String instanceId;
 
+	@Value("${test.integration.spanner.project}")
+	private String projectId;
+
+	@Value("${test.integration.spanner.emulator-host}")
+	private String emulatorHost;
+
+	@Value("${test.integration.spanner.credentials.location}")
+	private Resource credentialsLocation;
+
+	private class IntegrationTestCredentialsSupplier implements CredentialsSupplier {
+
+		@Override
+		public Credentials getCredentials() {
+			Credentials credentials = new Credentials();
+			if (getCredentialsLocation() != null) {
+				credentials.setLocation(getCredentialsLocation());
+			}
+			return credentials;
+		}
+	}
+
 	@Bean
 	public String getDatabaseName() {
 		return this.databaseName;
@@ -68,14 +91,27 @@ public class IntegrationTestConfiguration {
 
 	@Bean
 	public String getProjectId() {
+		if (this.projectId != null) {
+			return this.projectId;
+		}
 		return new DefaultGcpProjectIdProvider().getProjectId();
+	}
+
+	@Bean
+	public String getEmulatorHost() {
+		return this.emulatorHost;
+	}
+
+	@Bean
+	public Resource getCredentialsLocation() {
+		return this.credentialsLocation;
 	}
 
 	@Bean
 	public com.google.auth.Credentials getCredentials() {
 
 		try {
-			return new DefaultCredentialsProvider(Credentials::new).getCredentials();
+			return new DefaultCredentialsProvider(new IntegrationTestCredentialsSupplier()).getCredentials();
 		}
 		catch (IOException e) {
 			throw new RuntimeException(e);
@@ -84,7 +120,11 @@ public class IntegrationTestConfiguration {
 
 	@Bean
 	public SpannerOptions spannerOptions() {
-		return SpannerOptions.newBuilder().setProjectId(getProjectId())
+		SpannerOptions.Builder builder = SpannerOptions.newBuilder();
+		if (getEmulatorHost() != null) {
+			builder.setHost(getEmulatorHost());
+		}
+		return builder.setProjectId(getProjectId())
 				.setCredentials(getCredentials()).build();
 	}
 
